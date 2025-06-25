@@ -1,37 +1,21 @@
-/* eslint-disable no-unused-vars */
-import { Request, Response, NextFunction } from 'express';
-import { getUserFromXToken, getUserFromAuthorization } from '../utils/auth';
+import redisClient from '../utils/redis';
+import dbClient from '../utils/db';
+import { ObjectId } from 'mongodb';
 
-/**
- * Applies Basic authentication to a route.
- * @param {Request} req The Express request object.
- * @param {Response} res The Express response object.
- * @param {NextFunction} next The Express next function.
- */
-export const basicAuthenticate = async (req, res, next) => {
-  const user = await getUserFromAuthorization(req);
+const authMiddleware = async (req, res, next) => {
+  const token = req.header('X-Token');
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
 
-  if (!user) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
+  const key = `auth_${token}`;
+  const userId = await redisClient.get(key);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const user = await dbClient.usersCollection.findOne({ _id: ObjectId(userId) });
+  if (!user) return res.status(401).json({ error: 'Unauthorized' });
+
   req.user = user;
   next();
 };
 
-/**
- * Applies X-Token authentication to a route.
- * @param {Request} req The Express request object.
- * @param {Response} res The Express response object.
- * @param {NextFunction} next The Express next function.
- */
-export const xTokenAuthenticate = async (req, res, next) => {
-  const user = await getUserFromXToken(req);
+export default authMiddleware;
 
-  if (!user) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  req.user = user;
-  next();
-};
